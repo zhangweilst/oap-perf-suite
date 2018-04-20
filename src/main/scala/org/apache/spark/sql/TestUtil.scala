@@ -104,6 +104,22 @@ object TestUtil {
       println(Tabulator.format(Seq(header) ++ content))
     }
   }
+
+  def formatIndexResults(resultSet: Seq[(String, Seq[(String, Array[String])])]): Unit = {
+    assert(resultSet.nonEmpty)
+
+    resultSet.foreach{ result =>
+      val header =
+        Seq(("%" + Tabulator.MAX_WIDTH + "s").format(Tabulator.truncate(result._1))) ++
+          Seq("Index construction time/ms") ++
+          Seq("Index size")
+      val content = result._2.map(x =>
+        Seq(Tabulator.truncate(x._1)) ++
+        x._2.toSeq
+      )
+      println(Tabulator.format(Seq(header) ++ content))
+    }
+  }
 }
 
 // TODO: use DataSet.show()??

@@ -38,6 +38,9 @@ object OapBenchmarkDataBuilder extends OapPerfSuiteContext with Logging {
     "oap.benchmark.tpcds.data.partition"  -> "80"
   )
 
+  private val _resultMap: mutable.LinkedHashMap[String, Seq[(String, Array[String])]] =
+    new mutable.LinkedHashMap[String, Seq[(String, Array[String])]]
+
   def getDatabase(format: String) : String = {
     val prefix = properties.get("oap.benchmark.database.prefix").get
     val postfix = properties.get("oap.benchmark.database.postfix").get
@@ -140,38 +143,32 @@ object OapBenchmarkDataBuilder extends OapPerfSuiteContext with Logging {
   }
 
   def buildAllIndex() {
-    def buildBtreeIndex(tablePath: String, table: String, attr: String): Unit = {
+    def buildBtreeIndex(tablePath: String, table: String, attr: String): (String, Array[String]) = {
       try {
         spark.sql(s"DROP OINDEX ${table}_${attr}_index ON $table")
       } catch {
         case _: Throwable => logWarning("Index doesn't exist, so don't need to drop here!")
-      } finally {
-        TestUtil.time(
-          spark.sql(
-            s"CREATE OINDEX IF NOT EXISTS ${table}_${attr}_index ON $table ($attr) USING BTREE"
-          ),
-          s"Create B-Tree index on ${table}(${attr}) cost "
-        )
-        logWarning(s"The size of B-Tree index on ${table}(${attr}) cost:" +
-          TestUtil.calculateIndexSize(table, tablePath, attr))
       }
+      val indexTime = TestUtil.queryTime(
+        spark.sql(
+          s"CREATE OINDEX IF NOT EXISTS ${table}_${attr}_index ON $table ($attr) USING BTREE"
+        ))
+      val indexSize = TestUtil.calculateIndexSize(table, tablePath, attr)
+      ("Btree", Array(indexTime.toString, indexSize))
     }
 
-    def buildBitmapIndex(tablePath: String, table: String, attr: String): Unit = {
+    def buildBitmapIndex(tablePath: String, table: String, attr: String): (String, Array[String]) = {
       try {
         spark.sql(s"DROP OINDEX ${table}_${attr}_index ON $table")
       } catch {
         case _: Throwable => logWarning("Index doesn't exist, so don't need to drop here!")
-      } finally {
-        TestUtil.time(
-          spark.sql(
-            s"CREATE OINDEX IF NOT EXISTS ${table}_${attr}_index ON $table ($attr) USING BITMAP"
-          ),
-          s"Create Bitmap index on ${table}(${attr}) cost"
-        )
-        logWarning(s"The size of Bitmap index on ${table}(${attr}) cost:" +
-          TestUtil.calculateIndexSize(table, tablePath, attr))
       }
+      val indexTime = TestUtil.queryTime(
+        spark.sql(
+          s"CREATE OINDEX IF NOT EXISTS ${table}_${attr}_index ON $table ($attr) USING BITMAP"
+        ))
+      val indexSize = TestUtil.calculateIndexSize(table, tablePath, attr)
+      ("Bitmap", Array(indexTime.toString, indexSize))
     }
 
     val versionNum = properties.get("oap.benchmark.support.oap.version").get
@@ -179,11 +176,21 @@ object OapBenchmarkDataBuilder extends OapPerfSuiteContext with Logging {
     val dataFormats: Seq[String] = Seq("oap", "parquet")
 
     dataFormats.foreach { dataFormat => {
+        val test = dataFormat + " index cost"
         spark.sql(s"use ${getDatabase(dataFormat)}")
         val tableLocation: String = formatTableLocation(hdfsRootDir, versionNum, dataFormat)
-        buildBtreeIndex(tableLocation, "store_sales", "ss_customer_sk")
-        buildBitmapIndex(tableLocation, "store_sales", "ss_item_sk1")
+        val btreeCost = buildBtreeIndex(tableLocation, "store_sales", "ss_customer_sk")
+        val bitmapCost = buildBitmapIndex(tableLocation, "store_sales", "ss_item_sk1")
+        _resultMap.put(test, Seq(btreeCost, bitmapCost))
       }
     }
+
+    /**
+      * We output the index cost(index construction time and index size) here.
+      * The output format refers to that of [[OapTestSuite]],
+      * only that the repCount here is normally 1 instead of N
+      */
+    println("#" + this.getClass.getCanonicalName.dropRight(1))
+    TestUtil.formatIndexResults(_resultMap.toSeq)
   }
 }

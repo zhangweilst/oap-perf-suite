@@ -67,7 +67,9 @@ function genData {
     --deploy-mode client \
     --class org.apache.spark.sql.OapPerfSuite \
     ${workDir}/oap-perf-suite/target/scala-2.11/oap-perf-suite-assembly-1.0.jar \
-    -d
+    -d \
+    1>>./index-cost \
+    2>&3
 }
 
 # create task directory and run periodic task
