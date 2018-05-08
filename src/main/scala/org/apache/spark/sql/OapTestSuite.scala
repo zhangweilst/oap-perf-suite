@@ -69,7 +69,7 @@ abstract class OapTestSuite extends BenchmarkConfigSelector with OapPerfSuiteCon
   private var _activeConf: Option[BenchmarkConfig] = None
   def runWith(conf: BenchmarkConfig)(body: => Unit): Unit = {
     _activeConf = Some(conf)
-    beforeAll(conf.allSparkOptions() ++ conf.allSqlOptions())
+    beforeAll(conf.allSparkOptions())
     if (prepare()){
       body
     } else {
